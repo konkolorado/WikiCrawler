@@ -70,7 +70,7 @@ class WordWrangler(object):
         """
         datafile = self.rootname + ".old"
         if self._file_exists(self.rootname, datafile):
-            return self._unpickle_data(self.rootname, datafile)
+            return set(self._read_data(self.rootname, datafile))
         else:
             self._make_dir()
             return set([])
@@ -81,10 +81,10 @@ class WordWrangler(object):
         continue where we left off. If it has not been visited,
         we want to start a search from this new url
         """
-        datafile = self.rootname + ".old"
+        datafile = self.rootname + ".next"
         if init_url in self.old_urls and \
            self._file_exists(self.rootname, datafile):
-                return self._unpickle_data(self.rootname, datafile)
+                return self._read_data(self.rootname, datafile)
         else:
             return [init_url]
 
@@ -103,16 +103,35 @@ class WordWrangler(object):
         instream.close()
         return data
 
+    def _read_data(self, directory, filename):
+        infile = open(directory + "/" + filename, "r")
+        lines = infile.read()
+        infile.close()
+        return lines.split(',')
+
     def _pickle_data(self, data, directory, filename):
-        outsteam = open(directory + "/" + filename, "wb")
+        outstream = open(directory + "/" + filename, "wb")
         pk.dump(data, outstream)
         outstream.close()
 
+    def _write_data(self, data, directory, filename):
+        """
+        Writes the data in a simple csv format. Data should be
+        an iterable
+        """
+        outfile = open(directory + "/" + filename, "w")
+        for i, d in enumerate(data):
+            if i == len(data) - 1:
+                outfile.write("%s" % d)
+            else:
+                outfile.write("%s," % d)
+        outfile.close()
+
     def save_progress(self):
-        # pickle dictionary
-        # pickle next_urls
-        # pickle old_urls
-        return None
+        root = self.rootname
+        self._pickle_data(self.words, root, root + ".words")
+        self._write_data(self.next_urls, root, root + ".next")
+        self._write_data(self.old_urls, root, root + ".old")
 
     def begin_wrangling(self):
         """
@@ -120,6 +139,8 @@ class WordWrangler(object):
         through self.next_urls
         """
         visited = 0
+        print len(self.words), len(self.old_urls), len(self.next_urls)
+
         while visited < self.max_pages and len(self.next_urls) != 0:
             curr_url = self.next_urls.pop(0)
             self.old_urls.add(curr_url)
@@ -133,10 +154,12 @@ class WordWrangler(object):
             self._add_content_to_words(pagecontents)
             visited += 1
 
+            print len(self.words), len(self.old_urls), len(self.next_urls)
+
     def _make_url_request(self, url):
         try:
             response = urllib2.urlopen(url)
-        except ValueError:
+        except (ValueError, urllib2.HTTPError, urllib2.URLError):
             return ""
         return response.read()
 
@@ -154,6 +177,8 @@ class WordWrangler(object):
     def _get_html_text(self, page):
         soup =  BeautifulSoup(page, "lxml")
         words = soup.find_all("div", class_="mw-body-content")
+        if len(words) == 0:
+            return ""
         return words[0].get_text()
 
     def _clean_text(self, raw_text):
@@ -166,11 +191,17 @@ class WordWrangler(object):
     def _get_links(self, page):
         """
         Finds all the links on the html page by finding the
-        href instances
+        href instances. Only counts valid ascii links
         """
         links = []
         netloc = self._get_url_netloc(self.init_url)
         for l in html.fromstring(page).xpath('//a/@href'):
+            try:
+                l.decode('ascii')
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                continue
+            if ',' in l:
+                continue
             if l.startswith("http"):
                 links.append(l)
             elif l.startswith("/wiki"):
@@ -194,7 +225,7 @@ class WordWrangler(object):
                 self.words[word] = self.words.get(word, 0) + 1
 
 def main():
-    ww = WordWrangler(5, "https://en.wikipedia.org/wiki/Bogosort")
+    ww = WordWrangler(5000, "https://en.wikipedia.org/wiki/Bogosort")
     ww.begin_wrangling()
     ww.save_progress()
 
