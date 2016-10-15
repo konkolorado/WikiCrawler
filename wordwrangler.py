@@ -1,4 +1,6 @@
 """
+Author: Uriel Mandujano
+
 Things Crawler needs to do:
 0) Load words dictionary (pickled) into memory
 1) Load URLS it has already visited into memory
@@ -13,21 +15,16 @@ Things Crawler needs to do:
     - repickle words dictionary
     - write visited URLs to file
     - write "next" URLs queue to file
-
-NOTES
-pip install lxml
-pip install requests
-pip install bs4
-For use with wikipedia only
 """
 
 import urllib2
-import cPickle as pk
 import urlparse
-from lxml import html
-from bs4 import BeautifulSoup
+import cPickle as pk
 import re
 import os
+
+from lxml import html
+from bs4 import BeautifulSoup
 
 class WordWrangler(object):
     def __init__(self, max_pages, init_url):
