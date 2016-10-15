@@ -139,8 +139,6 @@ class WordWrangler(object):
         through self.next_urls
         """
         visited = 0
-        print len(self.words), len(self.old_urls), len(self.next_urls)
-
         while visited < self.max_pages and len(self.next_urls) != 0:
             curr_url = self.next_urls.pop(0)
             self.old_urls.add(curr_url)
@@ -212,8 +210,9 @@ class WordWrangler(object):
         """
         Adds a list of links to the set of next_urls
         """
-        links = list(set(links) - self.old_urls)
-        self.next_urls.extend(links)
+        newlinks = set(links) - self.old_urls
+        newlinks = list(newlinks - set(self.next_urls))
+        self.next_urls.extend(newlinks)
 
     def _add_content_to_words(self, pagecontents):
         """
@@ -225,7 +224,7 @@ class WordWrangler(object):
                 self.words[word] = self.words.get(word, 0) + 1
 
 def main():
-    ww = WordWrangler(5000, "https://en.wikipedia.org/wiki/Bogosort")
+    ww = WordWrangler(5, "https://en.wikipedia.org/wiki/Bogosort")
     ww.begin_wrangling()
     ww.save_progress()
 
