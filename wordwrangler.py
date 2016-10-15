@@ -13,17 +13,28 @@ Things Crawler needs to do:
     - repickle words dictionary
     - write visited URLs to file
     - write "next" URLs queue to file
+
+NOTES
+pip install lxml
+pip install requests
+pip install bs4
+For use with wikipedia only
 """
 
 import urllib2
 import cPickle as pk
 import urlparse
+from lxml import html
+from bs4 import BeautifulSoup
+import re
 import os
 
 class WordWrangler(object):
     def __init__(self, max_pages, init_url):
         self.max_pages = max_pages
         self.rootname = self._name_from_url(init_url)
+        self.init_url = init_url
+
         self.words = self._load_dictionary()
         self.old_urls = self._load_old_urls()
         self.next_urls = self._load_next(init_url)
@@ -32,10 +43,13 @@ class WordWrangler(object):
         """
         Extracts name from a url in the format www.name.ext
         """
-        netloc = urlparse.urlparse(url)[1]
+        netloc = self._get_url_netloc(url)
         start = netloc.find('.') + 1
         end = netloc.find('.', start)
         return netloc[start:end]
+
+    def _get_url_netloc(self, url):
+        return urlparse.urlparse(url)[1]
 
     def _load_dictionary(self):
         """
@@ -108,20 +122,76 @@ class WordWrangler(object):
         visited = 0
         while visited < self.max_pages and len(self.next_urls) != 0:
             curr_url = self.next_urls.pop(0)
+            self.old_urls.add(curr_url)
+
             htmlpage = self._make_url_request(curr_url)
-            print htmlpage
-            pagecontents = self._scrape_html(htmlpage)
+            if htmlpage == "":
+                continue
+
+            pagecontents, pagelinks = self._scrape_html(htmlpage)
+            self._add_links_to_next(pagelinks)
+            self._add_content_to_words(pagecontents)
+            visited += 1
 
     def _make_url_request(self, url):
-        return urllib2.urlopen(url).read()
+        try:
+            response = urllib2.urlopen(url)
+        except ValueError:
+            return ""
+        return response.read()
 
     def _scrape_html(self, page):
         """
         Scrapes an html page and returns a string containing
-        all the words on the page. Any urls found during
-        scraping will be added to self.next_urls
+        all the words on the page and a list of any urls found
         """
-        return ""
+        raw_text = self._get_html_text(page)
+        clean_text = self._clean_text(raw_text)
+
+        links = self._get_links(page)
+        return clean_text, links
+
+    def _get_html_text(self, page):
+        soup =  BeautifulSoup(page, "lxml")
+        words = soup.find_all("div", class_="mw-body-content")
+        return words[0].get_text()
+
+    def _clean_text(self, raw_text):
+        """
+        Removes oddball characters such as brackets, periods, empty
+        spaces, etc.
+        """
+        return ' '.join(re.findall(r"[\w']+", raw_text))
+
+    def _get_links(self, page):
+        """
+        Finds all the links on the html page by finding the
+        href instances
+        """
+        links = []
+        netloc = self._get_url_netloc(self.init_url)
+        for l in html.fromstring(page).xpath('//a/@href'):
+            if l.startswith("http"):
+                links.append(l)
+            elif l.startswith("/wiki"):
+                links.append("http://" + netloc + l)
+        return links
+
+    def _add_links_to_next(self, links):
+        """
+        Adds a list of links to the set of next_urls
+        """
+        links = list(set(links) - self.old_urls)
+        self.next_urls.extend(links)
+
+    def _add_content_to_words(self, pagecontents):
+        """
+        Takes a space delimited string of the words on the page
+        and adds them to the words dictionary
+        """
+        for word in pagecontents.split():
+            if not word.isdigit():
+                self.words[word] = self.words.get(word, 0) + 1
 
 def main():
     ww = WordWrangler(5, "https://en.wikipedia.org/wiki/Bogosort")
