@@ -19,6 +19,7 @@ Things Crawler needs to do:
 
 import urllib2
 import urlparse
+import httplib
 import cPickle as pk
 import re
 import os
@@ -41,9 +42,8 @@ class WordWrangler(object):
         Extracts name from a url in the format www.name.ext
         """
         netloc = self._get_url_netloc(url)
-        start = netloc.find('.') + 1
-        end = netloc.find('.', start)
-        return netloc[start:end]
+        end = netloc.rfind('.')
+        return netloc[:end]
 
     def _get_url_netloc(self, url):
         return urlparse.urlparse(url)[1]
@@ -154,7 +154,8 @@ class WordWrangler(object):
     def _make_url_request(self, url):
         try:
             response = urllib2.urlopen(url)
-        except (ValueError, urllib2.HTTPError, urllib2.URLError):
+        except (ValueError, urllib2.HTTPError, urllib2.URLError, \
+                httplib.BadStatusLine):
             return ""
         return response.read()
 
@@ -196,8 +197,10 @@ class WordWrangler(object):
             except (UnicodeDecodeError, UnicodeEncodeError):
                 continue
             if ',' in l:
+                # Invalid char in links
                 continue
-            if l.startswith("http"):
+
+            if l.startswith("https://" + netloc):
                 links.append(l)
             elif l.startswith("/wiki"):
                 links.append("http://" + netloc + l)
@@ -218,10 +221,11 @@ class WordWrangler(object):
         """
         for word in pagecontents.split():
             if not word.isdigit():
+                word = word.lower()
                 self.words[word] = self.words.get(word, 0) + 1
 
 def main():
-    ww = WordWrangler(5, "https://en.wikipedia.org/wiki/Bogosort")
+    ww = WordWrangler(500, "https://en.wikipedia.org/wiki/Bogosort")
     ww.begin_wrangling()
     ww.save_progress()
 
